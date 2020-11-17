@@ -1,0 +1,12 @@
+{
+  "groups": [
+    {
+      "name": "spring.datasource.hikari",
+      "type": "javax.sql.DataSource",
+      "sourceType": "com.okestro.openapidemo.config.MysqlConfig",
+      "sourceMethod": "dataSource()"
+    }
+  ],
+  "properties": [],
+  "hints": []
+}
