@@ -1,32 +1,32 @@
 package com.okestro.openapidemo.service;
 
-import com.okestro.openapidemo.dto.BusResultDto;
-import com.okestro.openapidemo.dto.StatusDto;
-import jdk.net.SocketFlow;
+import com.okestro.openapidemo.dto.BusApiHeaderDto;
+import com.okestro.openapidemo.dto.BusApiBodyDto;
+import com.okestro.openapidemo.dto.BusApiDto;
+import com.okestro.openapidemo.dto.BusApiResultDto;
+import com.okestro.openapidemo.repository.BusApiBodyRepository;
+import com.okestro.openapidemo.repository.BusApiIdInfoRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.PropertySource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.*;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.yaml.snakeyaml.util.UriEncoder;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.net.URI;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.*;
 
 @EnableScheduling
 @Service
@@ -39,45 +39,101 @@ public class TestService {
     @Value("${test.api.serviceKey}")
     private String serviceKey;
 
-    @Value("${test.api.busRouteId}")
-    private String busRouteId;
+    @Autowired
+    private BusApiBodyRepository busApiBodyRepository;
+
+    @Autowired
+    private BusApiIdInfoRepository busApiIdInfoRepository;
+
+//    List<String> id_info = busApiIdInfoRepository.findBusRouteId();
 
     @Scheduled(cron="${test.api.scheduled.exp}")
-    public void BusApi() throws Exception {
+    public void BusApiMain() {
+        List<String> id_info = busApiIdInfoRepository.findBusRouteId();
 
-        // uri 생성
-        StatusDto dto = new StatusDto();
+        for (String busRouteId: id_info) {
+            try {
+                TestService.BusApi(busApiBodyRepository, apiUrl, serviceKey, busRouteId);
+            } catch (Exception e) {
+                e.printStackTrace();
+                System.out.println("busRouteId : " + busRouteId);
+            }
+        }
+    }
+
+    public static void BusApi(BusApiBodyRepository busApiBodyRepository, String apiUrl, String serviceKey, String busRouteId) throws Exception {
+
+        /* uri 생성 */
+        BusApiDto dto = new BusApiDto();
         Map<String, String> params = new HashMap<>();
+
+        UriEncoder.encode(busRouteId);
         params.put("serviceKey", serviceKey);
-        params.put("busRouteId", busRouteId);
+        params.put("busRouteId", UriEncoder.encode(busRouteId));
 
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(apiUrl);
         for (Map.Entry<String, String> entry : params.entrySet()) {
             builder.queryParam(entry.getKey(), entry.getValue());
         }
 
-        // Http Client 생성
+        URI uri = URI.create(builder.build(false).toUriString());
+//        System.out.println(uri);
+//        uri = "http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid?serviceKey=1JUdQNlvEneBvGD546ShDvW7mVdVA%2Bd9k%2F7y7CkSgw%2BoERiCt5x3vzDE1qPZGP7uNJ0DL2EiKurdGZRV5ZuuUQ%3D%3D&busRouteId=100100124";
+
+        /* Http Client 생성 */
         CloseableHttpClient httpClient = HttpClients.createDefault();
         HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
         requestFactory.setHttpClient(httpClient);
 
-        // HttpClient를 추상화해서 제공(json, xml 등)
+        /* HttpClient를 추상화해서 제공(json, xml 등) */
         RestTemplate restTemplate = new RestTemplate(requestFactory);
 
-        ResponseEntity<String> response = restTemplate.exchange(builder.toUriString(), HttpMethod.GET, null, String.class);
+        /* Http Header setting */
+        HttpHeaders headers = new HttpHeaders();
+        HttpEntity<?> httpEntity = new HttpEntity<>(headers);
+
+        //"http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid?serviceKey=1JUdQNlvEneBvGD546ShDvW7mVdVA%2Bd9k%2F7y7CkSgw%2BoERiCt5x3vzDE1qPZGP7uNJ0DL2EiKurdGZRV5ZuuUQ%3D%3D&busRouteId=100100124";
+
+        ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, httpEntity, String.class);
 
         dto.setStatus(String.valueOf(response.getStatusCode()));
         StringReader reader = new StringReader(Objects.requireNonNull(response.getBody()));
 
-        JAXBContext jaxbContext = JAXBContext.newInstance(StatusDto.class);
+        /* XML을 객체로 변환 */
+        JAXBContext jaxbContext = JAXBContext.newInstance(BusApiDto.class);
         Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
-        BusResultDto resultDto = null;
+        BusApiResultDto resultDto = null;
         try {
-            resultDto = (BusResultDto) jaxbUnmarshaller.unmarshal(reader);
+            resultDto = (BusApiResultDto) jaxbUnmarshaller.unmarshal(reader);
         }catch(Exception e) {
-            dto.setMessage(e.getMessage().substring(500));
+            dto.setMessage(e.getMessage());
+            return;
         }
 
-        System.out.println(resultDto);
+        assert resultDto != null;
+        BusApiHeaderDto msgHeader = resultDto.getMsgHeader();
+
+        /* 데이터 입력 */
+        if (!"200".equals(dto.getStatus()) || dto.getMessage() !=null) {
+            dto.setMessage(msgHeader.getHeaderMsg());
+            dto.setCode(msgHeader.getHeaderCd());
+            if (!"0".equals(msgHeader.getHeaderCd())) {
+                log.error("{busRouteId : " + busRouteId + ", Header Code : " + msgHeader.getHeaderCd() + "}");
+                return ;
+            }
+        }
+
+        for (BusApiBodyDto busApiBodyDto : resultDto.getMsgBody().busApiBodyDtos) {
+            if (busApiBodyDto != null) {
+                try {
+                    busApiBodyDto.setBusRouteId(busRouteId);
+                    busApiBodyRepository.save(busApiBodyDto);
+                } catch (DataIntegrityViolationException e) {
+                    return;
+                }
+            } else {
+                System.out.println(busRouteId);
+            }
+        }
     }
 }
