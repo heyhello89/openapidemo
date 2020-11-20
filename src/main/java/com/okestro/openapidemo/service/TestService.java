@@ -100,12 +100,8 @@ public class TestService {
         HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
         requestFactory.setHttpClient(httpClient);
 
-        log.info("HttpClient : {}", httpClient.toString());
-
         /* HttpClient를 추상화해서 제공(json, xml 등) */
         RestTemplate restTemplate = new RestTemplate(requestFactory);
-
-        log.info("RestTemplate : {}", restTemplate.toString());
 
         /* Http Header setting */
         HttpHeaders headers = new HttpHeaders();
@@ -114,6 +110,8 @@ public class TestService {
         //"http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid?serviceKey=1JUdQNlvEneBvGD546ShDvW7mVdVA%2Bd9k%2F7y7CkSgw%2BoERiCt5x3vzDE1qPZGP7uNJ0DL2EiKurdGZRV5ZuuUQ%3D%3D&busRouteId=100100124";
 
         ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, httpEntity, String.class);
+
+        log.info("Respons Header : {}", response.getHeaders().toString());
 
         String statusCode = String.valueOf(response.getStatusCode());
         dto.setStatus(statusCode);
@@ -143,7 +141,7 @@ public class TestService {
             dto.setMessage(msgHeader.getHeaderMsg());
             dto.setCode(headerCode);
             if (!"0".equals(headerCode)) {
-                log.error("busRouteId : {}, Status Code : {}, Header Code : {}" + busRouteId, statusCode, headerCode);
+                log.error("busRouteId : {}, Status Code : {}, Header Code : {}", busRouteId, statusCode, headerCode);
                 return headerCode;
             }
         }
