@@ -100,12 +100,12 @@ public class TestService {
         HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
         requestFactory.setHttpClient(httpClient);
 
-        log.info("httpClient : {}", httpClient.toString());
+        log.info("HttpClient : {}", httpClient.toString());
 
         /* HttpClient를 추상화해서 제공(json, xml 등) */
         RestTemplate restTemplate = new RestTemplate(requestFactory);
 
-        log.info("restTemplate : {}", restTemplate.toString());
+        log.info("RestTemplate : {}", restTemplate.toString());
 
         /* Http Header setting */
         HttpHeaders headers = new HttpHeaders();
@@ -130,7 +130,7 @@ public class TestService {
             resultDto = (BusApiResultDto) jaxbUnmarshaller.unmarshal(reader);
         }catch(Exception e) {
             dto.setMessage(e.getMessage());
-            log.error("Status Code : " + statusCode + "Error Message : " + e.getMessage());
+            log.error("Status Code : {}, Error Message : {}", statusCode, e.getMessage());
             return headerCode;
         }
 
@@ -143,7 +143,7 @@ public class TestService {
             dto.setMessage(msgHeader.getHeaderMsg());
             dto.setCode(headerCode);
             if (!"0".equals(headerCode)) {
-                log.error("busRouteId : " + busRouteId + ", Status Code : " + statusCode + ", Header Code : " + headerCode);
+                log.error("busRouteId : {}, Status Code : {}, Header Code : {}" + busRouteId, statusCode, headerCode);
                 return headerCode;
             }
         }
@@ -157,7 +157,7 @@ public class TestService {
                     return headerCode;
                 }
             } else {
-                log.debug(busRouteId);
+                log.debug("busRouteId : {}", busRouteId);
             }
         }
         return headerCode;
