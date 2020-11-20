@@ -24,10 +24,7 @@ public class CsvReader {
         bufferedReader = Files.newBufferedReader(Paths.get(path));
 
         while ((line = bufferedReader.readLine()) != null) {
-            List<String> tmpList = new ArrayList<String>();
-            String[] array = line.split(",");
-
-            tmpList = Arrays.asList(array);
+            List<String> tmpList = Arrays.asList(line.split(","));
             System.out.println(tmpList);
             result.add(tmpList);
         }

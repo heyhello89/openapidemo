@@ -11,6 +11,5 @@ import org.springframework.web.bind.annotation.RequestMapping;
 @RequestMapping(value = "/")
 public class MainController{
     protected Logger logger = LoggerFactory.getLogger(this.getClass());
-
 }
 

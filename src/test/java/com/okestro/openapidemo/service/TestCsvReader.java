@@ -13,7 +13,7 @@ public class TestCsvReader {
 
     public static void main(String[] args) throws IOException {
         CsvReader test = new CsvReader();
-        String path = "/Users/hsmoon/IdeaProjects/openapidemo/src/main/resources/bus_route_id_info_20190508.csv";
+        String path = "/test";
         test.readCsv(path);
     }
 

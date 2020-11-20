@@ -21,11 +21,11 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.yaml.snakeyaml.util.UriEncoder;
 
+import javax.annotation.PostConstruct;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
 import java.net.URI;
-import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.*;
 
 @EnableScheduling
@@ -45,15 +45,29 @@ public class TestService {
     @Autowired
     private BusApiIdInfoRepository busApiIdInfoRepository;
 
-//    List<String> id_info = busApiIdInfoRepository.findBusRouteId();
+    @PostConstruct
+    void postConstruct() {
+        log.info("test.api.url={}", apiUrl);
+        log.info("test.api.serviceKey={}", serviceKey);
+        apiUrl = apiUrl == null ? "" : apiUrl.trim();
+        serviceKey = serviceKey == null ? "" : serviceKey.trim();
+    }
 
+    // TODO: kafka sender 구성
     @Scheduled(cron="${test.api.scheduled.exp}")
     public void BusApiMain() {
         List<String> id_info = busApiIdInfoRepository.findBusRouteId();
-
+        int count = 0;
         for (String busRouteId: id_info) {
             try {
-                TestService.BusApi(busApiBodyRepository, apiUrl, serviceKey, busRouteId);
+                String headerCode = TestService.BusApi(busApiBodyRepository, apiUrl, serviceKey, busRouteId);
+                count += 1;
+                /* 7 : request 요청 건수 초과 */
+                if ("7".equals(headerCode)) {
+                    break;
+                } else if (count > 5) {
+                    break;
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 System.out.println("busRouteId : " + busRouteId);
@@ -61,7 +75,7 @@ public class TestService {
         }
     }
 
-    public static void BusApi(BusApiBodyRepository busApiBodyRepository, String apiUrl, String serviceKey, String busRouteId) throws Exception {
+    public static String BusApi(BusApiBodyRepository busApiBodyRepository, String apiUrl, String serviceKey, String busRouteId) throws Exception {
 
         /* uri 생성 */
         BusApiDto dto = new BusApiDto();
@@ -77,6 +91,7 @@ public class TestService {
         }
 
         URI uri = URI.create(builder.build(false).toUriString());
+        log.info("URI : {}", uri);
 //        System.out.println(uri);
 //        uri = "http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid?serviceKey=1JUdQNlvEneBvGD546ShDvW7mVdVA%2Bd9k%2F7y7CkSgw%2BoERiCt5x3vzDE1qPZGP7uNJ0DL2EiKurdGZRV5ZuuUQ%3D%3D&busRouteId=100100124";
 
@@ -85,8 +100,12 @@ public class TestService {
         HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
         requestFactory.setHttpClient(httpClient);
 
+        log.info("httpClient : {}", httpClient.toString());
+
         /* HttpClient를 추상화해서 제공(json, xml 등) */
         RestTemplate restTemplate = new RestTemplate(requestFactory);
+
+        log.info("restTemplate : {}", restTemplate.toString());
 
         /* Http Header setting */
         HttpHeaders headers = new HttpHeaders();
@@ -96,18 +115,23 @@ public class TestService {
 
         ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, httpEntity, String.class);
 
-        dto.setStatus(String.valueOf(response.getStatusCode()));
+        String statusCode = String.valueOf(response.getStatusCode());
+        dto.setStatus(statusCode);
         StringReader reader = new StringReader(Objects.requireNonNull(response.getBody()));
 
         /* XML을 객체로 변환 */
         JAXBContext jaxbContext = JAXBContext.newInstance(BusApiDto.class);
         Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
         BusApiResultDto resultDto = null;
+
+        String headerCode = String.valueOf(10);
+
         try {
             resultDto = (BusApiResultDto) jaxbUnmarshaller.unmarshal(reader);
         }catch(Exception e) {
             dto.setMessage(e.getMessage());
-            return;
+            log.error("Status Code : " + statusCode + "Error Message : " + e.getMessage());
+            return headerCode;
         }
 
         assert resultDto != null;
@@ -115,11 +139,12 @@ public class TestService {
 
         /* 데이터 입력 */
         if (!"200".equals(dto.getStatus()) || dto.getMessage() !=null) {
+            headerCode = msgHeader.getHeaderCd();
             dto.setMessage(msgHeader.getHeaderMsg());
-            dto.setCode(msgHeader.getHeaderCd());
-            if (!"0".equals(msgHeader.getHeaderCd())) {
-                log.error("{busRouteId : " + busRouteId + ", Header Code : " + msgHeader.getHeaderCd() + "}");
-                return ;
+            dto.setCode(headerCode);
+            if (!"0".equals(headerCode)) {
+                log.error("busRouteId : " + busRouteId + ", Status Code : " + statusCode + ", Header Code : " + headerCode);
+                return headerCode;
             }
         }
 
@@ -129,11 +154,12 @@ public class TestService {
                     busApiBodyDto.setBusRouteId(busRouteId);
                     busApiBodyRepository.save(busApiBodyDto);
                 } catch (DataIntegrityViolationException e) {
-                    return;
+                    return headerCode;
                 }
             } else {
-                System.out.println(busRouteId);
+                log.debug(busRouteId);
             }
         }
+        return headerCode;
     }
 }
